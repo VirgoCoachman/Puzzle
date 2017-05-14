@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>HTML5 Puzzle</title>
+    <meta charset="utf-8">
+    <link rel="stylesheet" type="text/css" href="css/bootstrap.css">
+
+	<script type="text/javascript" src="js/jquery.js"></script>
+	<script type="text/javascript" src="js/mhrotator.js"></script>
+	<script type="text/javascript" src="js/initrotator.js"></script>
+	<link rel="stylesheet" href="js/mhrotator.css" type="text/css" />
+
+    <style type="text/css">
+    	body{
+    		padding: 70px;
+    		background-color: darkgrey;
+    		background-image: url('images/maxresdeault.jpg');
+    		background-attachment: fixed;
+    	}
+    	#file{
+    		border: 0px;
+    	}
+    	#section{
+    		border: 0px;
+    	}
+    	[class*="col-"]{
+            border: 1px solid pink;
+            border-radius: 6px;
+            line-height: 40px;
+            text-align: center;
+            padding: 15px;
+        }
+        aside.col-lg-12{
+        	border: 0px solid black;
+        }
+        aside{
+        	border-color: pink;
+        }
+
+    </style>
+
+    <script>
+		var NIVEAU = 2;
+		const STYLE_AU_SURVOL = '#ae81ff';
+		 
+		var canvas;
+		var context;
+		var image;
+		var lesPieces;
+		var largeurCanvas;
+		var hauteurCanvas;
+		var largeurPiece;
+		var hauteurPiece;
+		var pieceCourante;
+		var pieceCible;
+		var souris;
+		var cheminImage;
+		var imageChoisie;
+		var progression, progress, pourcent, copieProgression, temps, debut;
+		var nbreCoups, lesScores;
+
+		function choisirImage(){
+			var	extensionAutorisee = ['png', 'jpg', 'jpeg', 'bmp', 'gif'],  extension;
+
+			imageChoisie = document.querySelector('#file');
+			imageChoisie.onchange = function(){
+				clearInterval(debut);
+		    	extension = imageChoisie.files[0].name.split('.');
+		    	extension = extension[extension.length - 1].toLowerCase();
+		    	if(extensionAutorisee.indexOf(extension) !== -1){
+		    		recupererImage(imageChoisie.files[0]);		    		
+		    	}else{
+		    		alert("format d'image non pris en charge");
+		    	}
+			    		    
+			};
+		}
+
+		function recupererImage(file){
+			var lecteur = new FileReader();
+			lecteur.onload = function(){
+				cheminImage = this.result;
+		    	initialisation();
+			};
+			lecteur.readAsDataURL(file);
+		}
+
+		function config(nbre){
+			NIVEAU = nbre;
+			initialisation();
+			document.getElementById("mhrotator").style.display = 'none';
+			document.getElementById('continuer').style.display = 'none';
+			document.getElementById('canvas').style.display = 'inline-block';
+			clearInterval(debut);
+			document.getElementById('minute').value = "0 secondes";
+			document.getElementById('score').value = '0 points';
+			document.getElementById('music').pause();
+			document.getElementById('music').currentTime = 0;
+		}
+
+		function initialisation(){
+			document.getElementById('canvas').style.display = 'inline-block';
+			document.getElementById('myalert').style.display = 'none';
+			document.getElementById('texteAlerte').innerHTML = '';
+			lesScores = [];
+			nbreCoups = 0;
+			document.getElementById('minute').value = "0 secondes";
+			document.getElementById('score').value = '0 points';
+			document.getElementById('music').pause();
+			document.getElementById('music').currentTime = 0;
+			progress = document.getElementById('progressBar');
+			pourcent = document.getElementById('pourcentage');
+			pourcent.style.color = 'white';
+			pourcent.innerHTML = '0 %';
+
+			progression = 0;
+		    copieProgression = 0;
+		    image = new Image();		    
+		    image.src = cheminImage;
+		    image.onload = function(){
+		    	if(image.width > 800 || image.height > 550){
+		    		document.getElementById('myalert').style.display = 'inline-block';
+		    		if(image.width > 800)
+		    			document.getElementById('texteAlerte').innerHTML = "la largeur de l'image est supérieure à 800px,valeur qui correspond à la largueur max pour un bon rendu du puzzle."+'<br/>';
+		    		if(image.height > 550)
+		    			document.getElementById('texteAlerte').innerHTML += '<br/>'+"la hauteur de l'image est supérieure à 550px, valeur qui correspond à la hauteur max pour un bon rendu du puzzle.";
+		    		image.src = "";
+		    		canvas.style.display = 'none';
+		    		return false;
+		    	}
+		    	document.getElementById('photo').src = cheminImage;
+
+			    largeurPiece = Math.floor(image.width / NIVEAU)
+			    hauteurPiece = Math.floor(image.height / NIVEAU)
+			    largeurCanvas = largeurPiece * NIVEAU;
+			    hauteurCanvas = hauteurPiece * NIVEAU;
+			    canvas = document.getElementById('canvas');
+			    context = canvas.getContext('2d');
+			    canvas.width = largeurCanvas;
+			    canvas.height = hauteurCanvas;
+			    canvas.style.border = "1px solid black";
+			    initialiserPuzzle();
+		    }
+		}
+
+		function initialiserPuzzle(){
+		    lesPieces = [];
+		    souris = {x:0,y:0};
+		    pieceCourante = null;
+		    pieceCible = null;
+		    context.drawImage(image, 0, 0, largeurCanvas, hauteurCanvas, 0, 0, largeurCanvas, hauteurCanvas);
+		    ecrireTexte("Cliquer pour commencer");
+		    construirePiecesPuzzle();
+		}
+
+		function ecrireTexte(texte){
+		    context.fillStyle = "black";
+		    context.globalAlpha = 0.4;
+		    context.fillRect(20,hauteurCanvas - 40,largeurCanvas - 40,40);
+		    context.fillStyle = "white";
+		    context.globalAlpha = 1;
+		    context.textAlign = "center";
+		    context.textBaseline = "middle";
+		    context.font = "20px cambria math";
+		    context.fillText(texte, largeurCanvas / 2, hauteurCanvas - 20);
+		}
+
+		function construirePiecesPuzzle(){
+		    var i;
+		    var piece;
+		    var xPos = 0;
+		    var yPos = 0;
+		    for(i = 0;i < NIVEAU * NIVEAU;i++){
+		        piece = {};
+		        piece.sx = xPos;
+		        piece.sy = yPos;
+		        lesPieces.push(piece);
+		        xPos += largeurPiece;
+		        if(xPos >= largeurCanvas){
+		            xPos = 0;
+		            yPos += hauteurPiece;
+		        }
+		    }
+		    canvas.onmousedown = function(){
+		    	demarrer();
+		    	document.getElementById("mhrotator").style.display = 'none';
+		    	document.getElementById('continuer').style.display = 'none';
+		    	document.getElementById('minute').value = "0 secondes";
+		    	document.getElementById('score').value = '0 points';
+			    lesPieces = melangerTableau(lesPieces);
+			    context.clearRect(0,0,largeurCanvas,hauteurCanvas);
+			    var i;
+			    var piece;
+			    var xPos = 0;
+			    var yPos = 0;
+			    for(i = 0;i < lesPieces.length;i++){
+			        piece = lesPieces[i];
+			        piece.xPos = xPos;
+			        piece.yPos = yPos;
+			        context.drawImage(image, piece.sx, piece.sy, largeurPiece, hauteurPiece, xPos, yPos, largeurPiece, hauteurPiece);
+			        context.strokeRect(xPos, yPos, largeurPiece,hauteurPiece);
+			        xPos += largeurPiece;
+			        if(xPos >= largeurCanvas){
+			            xPos = 0;
+			            yPos += hauteurPiece;
+			        }
+			    }
+			    canvas.onmousedown = function(e){
+				    if(e.layerX || e.layerX == 0){
+				        souris.x = e.layerX - canvas.offsetLeft;
+				        souris.y = e.layerY - canvas.offsetTop;
+				    }
+				    else if(e.offsetX || e.offsetX == 0){
+				        souris.x = e.offsetX - canvas.offsetLeft;
+				        souris.y = e.offsetY - canvas.offsetTop;
+				    }
+				    pieceCourante = checkPieceClicked();
+				    if(pieceCourante != null){
+				        context.clearRect(pieceCourante.xPos,pieceCourante.yPos,largeurPiece,hauteurPiece);
+				        context.save();
+				        context.globalAlpha = .9;
+				        context.drawImage(image, pieceCourante.sx, pieceCourante.sy, largeurPiece, hauteurPiece, souris.x - (largeurPiece / 2), souris.y - (hauteurPiece / 2), largeurPiece, hauteurPiece);
+				        context.restore();
+				        canvas.onmousemove = miseAJourPuzzle;
+				        canvas.onmouseup = pieceDepose;
+				    }
+				}
+			}
+		}
+
+		function melangerTableau(tab){
+		    for(var i = tab.length, j, tempo; i>1; j = parseInt(Math.random() * i), tempo = tab[--i], tab[i] = tab[j], tab[j] = tempo);
+		    return tab;
+		}
+
+		function checkPieceClicked(){
+		    var i;
+		    var piece;
+		    for(i = 0;i < lesPieces.length;i++){
+		        piece = lesPieces[i];
+		        if(souris.x < piece.xPos || souris.x > (piece.xPos + largeurPiece) || souris.y < piece.yPos || souris.y > (piece.yPos + hauteurPiece)){
+		            //On ne fait rien, aucune pièce selectionnée
+		        }
+		        else{
+		            return piece;
+		        }
+		    }
+		    return null;
+		}
+
+		function miseAJourPuzzle(e){
+		    pieceCible = null;
+		    if(e.layerX || e.layerX == 0){
+		        souris.x = e.layerX - canvas.offsetLeft;
+		        souris.y = e.layerY - canvas.offsetTop;
+		    }
+		    else if(e.offsetX || e.offsetX == 0){
+		        souris.x = e.offsetX - canvas.offsetLeft;
+		        souris.y = e.offsetY - canvas.offsetTop;
+		    }
+		    context.clearRect(0,0,largeurCanvas,hauteurCanvas);
+		    var i;
+		    var piece;
+		    for(i = 0;i < lesPieces.length;i++){
+		        piece = lesPieces[i];
+		        if(piece == pieceCourante){
+		            continue;
+		        }
+		        context.drawImage(image, piece.sx, piece.sy, largeurPiece, hauteurPiece, piece.xPos, piece.yPos, largeurPiece, hauteurPiece);
+		        context.strokeRect(piece.xPos, piece.yPos, largeurPiece,hauteurPiece);
+		        if(pieceCible == null){
+		            if(souris.x < piece.xPos || souris.x > (piece.xPos + largeurPiece) || souris.y < piece.yPos || souris.y > (piece.yPos + hauteurPiece)){
+		                //On ne fais rien, aucune pièce survolée
+		            }
+		            else{
+		                pieceCible = piece;
+		                context.save();
+		                context.globalAlpha = .4;
+		                context.fillStyle = STYLE_AU_SURVOL;
+		                context.fillRect(pieceCible.xPos,pieceCible.yPos,largeurPiece, hauteurPiece);
+		                context.restore();
+		            }
+		        }
+		    }
+		    context.save();
+		    context.globalAlpha = .6;
+		    context.drawImage(image, pieceCourante.sx, pieceCourante.sy, largeurPiece, hauteurPiece, souris.x - (largeurPiece / 2), souris.y - (hauteurPiece / 2), largeurPiece, hauteurPiece);
+		    context.restore();
+		    context.strokeRect( souris.x - (largeurPiece / 2), souris.y - (hauteurPiece / 2), largeurPiece,hauteurPiece);
+		}
+
+		function pieceDepose(e){
+
+			copieProgression = progression;
+		    canvas.onmousemove = null;
+		    canvas.onmouseup = null;
+		    if(pieceCible != null){
+		        var tmp = {xPos:pieceCourante.xPos,yPos:pieceCourante.yPos};
+		        pieceCourante.xPos = pieceCible.xPos;
+		        pieceCourante.yPos = pieceCible.yPos;
+		        pieceCible.xPos = tmp.xPos;
+		        pieceCible.yPos = tmp.yPos;
+		    }
+		    nbreCoups++;
+		    verifierJeu();
+		}
+
+		function verifierJeu(){
+		    context.clearRect(0,0,largeurCanvas,hauteurCanvas);
+		    var gagne = true;
+		    var i;
+		    var piece;
+		    var compteur = 0;
+		    for(i = 0;i < lesPieces.length;i++){
+		        piece = lesPieces[i];
+		        context.drawImage(image, piece.sx, piece.sy, largeurPiece, hauteurPiece, piece.xPos, piece.yPos, largeurPiece, hauteurPiece);
+		        context.strokeRect(piece.xPos, piece.yPos, largeurPiece,hauteurPiece);
+		        if(piece.xPos != piece.sx || piece.yPos != piece.sy){
+		            gagne = false;
+		        }else{
+					compteur++;
+		        }
+		        progression = compteur;
+		        if(progression != copieProgression){
+		        	etatProgressBar(progression);
+		        }
+		        copieProgression = progression;
+		    }
+		    if(gagne){
+		        setTimeout(gameOver,500);
+		    }
+		}
+
+		function etatProgressBar(nbre){
+			progress.style.width = progression * 100 / (NIVEAU*NIVEAU) +"%";
+			pourcent.style.color = 'white';
+			pourcent.innerHTML = Math.floor(progression * 100 / (NIVEAU*NIVEAU)) +"%";
+		}
+
+		function reprendreJeu(){
+			document.getElementById('myalert').style.display = 'none';
+			document.getElementById('texteAlerte').innerHTML = '';
+			document.getElementById('mhrotator').style.display = 'none';
+			document.getElementById('continuer').style.display = 'none';
+			document.getElementById('canvas').style.display = 'inline-block';
+			document.getElementById('minute').value = "0 secondes";
+			document.getElementById('score').value = '0 points';
+			document.getElementById('music').pause();
+			document.getElementById('music').currentTime = 0;
+		}
+
+		function demarrer(){
+			var minuteur = document.getElementById('minute');
+			var heureDebut = new Date().getTime();
+			debut = setInterval(function(){
+				temps = Math.floor((new Date().getTime() - heureDebut) / 1000);
+				minuteur.value = temps+' secondes';
+	   		}, 1000);
+		}
+
+		function calculerScore(){
+			var nbreMax = Math.pow(2, NIVEAU) - 1;
+			var tempsMax = nbreMax * 2;
+			var ecartCoups = nbreMax - nbreCoups;
+			var ecartTemps = tempsMax - temps;
+			score = Math.pow(NIVEAU, 2) *20;
+			
+			if(ecartCoups > 0)
+				score += ecartCoups * 10;
+			else
+				score += ecartCoups * 5;
+			if(ecartTemps > 0)
+				score += ecartTemps * 15;
+
+			document.getElementById('score').value = score+' points';
+			
+			if (localStorage.length <= 0){
+				localStorage.setItem(''+0, ''+score);
+			}else if(localStorage.length < 5){
+				localStorage.setItem(''+localStorage.length, ''+score)
+			}else{
+				if(score > localStorage.getItem(''+4))
+					localStorage.setItem(''+4, ''+score);
+			}
+			var tempo;
+			for(var i=0, t=localStorage.length; i<t-1; i++){
+				for(var j=i+1; j<t; j++){
+					if(localStorage.getItem(''+i) < localStorage.getItem(''+j)){
+						tempo = localStorage.getItem(''+i);
+						localStorage.setItem(''+i, localStorage.getItem(''+j));
+						localStorage.setItem(''+j, ''+tempo);
+					}
+				}
+			}
+			if(score == localStorage.getItem(''+0)){
+				document.getElementById('myalert').style.display = 'inline-block';
+			document.getElementById('texteAlerte').innerHTML = 'nouveau meilleur score réalisé: '+score;
+			}
+
+			var k, bonScore = false;
+			for(k=0, t=localStorage.length; k<t; k++){
+				if(localStorage.getItem(''+k) == score){
+					bonScore = true;
+					break;
+				}
+			}
+			if(bonScore){
+				document.getElementById('myalert').style.display = 'inline-block';
+			document.getElementById('texteAlerte').innerHTML = 'Votre score occupe la place N° '+(k+1)+' sur 5 meilleurs scores déjà réalisés';
+			}
+			
+			//localStorage.clear();//ici on vide le tableau de score le localStorage
+		}
+
+		function gameOver(){
+			document.getElementById('music').play();
+			progression = 0;
+		    canvas.onmousedown = null;
+		    canvas.onmousemove = null;
+		    canvas.onmouseup = null;
+		    initialiserPuzzle();
+		    calculerScore();
+		    alert("Bravo vous avez gagné");
+		    clearInterval(debut);
+		    document.getElementById('minute').value = "0 secondes"
+		    document.getElementById("mhrotator").style.display = 'inline-block';
+		    document.getElementById('continuer').style.display = 'block';
+		    document.getElementById('canvas').style.display = 'none';
+		    etatProgressBar(progression);
+		}
+
+		function activerOnglet(nbre){
+			if(nbre === 1)
+				document.getElementById('jouer').parentNode.className = 'active';
+			else
+				document.getElementById('info').parentNode.className = 'active';
+		}
+    </script>
+</head>
+ 
+<body onload="choisirImage();">
+
+        <div class="container">
+            <nav class="navbar navbar-inverse navbar-static-top navbar-fixed-top">
+            	<div class="navbar-header">
+            		<a class="navbar-brand" href="#">Puzzle Game</a>
+            	</div>
+		        <ul class="nav navbar-nav">
+		          <li class="active"> <a href="#" id="jouer" onclick="activerOnglet(1)">Jouer</a> </li>
+		          <li> <a id="info" href="infos.html" onclick="activerOnglet(2)">Puzzle Quid ?</a> </li>
+		        </ul>
+		        <form class="navbar-form pull-right">
+		          <input type="text" style="width:150px" class="input-small" placeholder="Recherche">
+		          <button type="submit" class="btn btn-primary btn-xs"><span class="glyphicon glyphicon-eye-open"></span> Chercher</button>
+		        </form>
+	      </nav>
+        </div>
+
+    <div class="container">
+        <div class="row">
+            <div class="row">
+                <div class="col-lg-3">
+                    <div class="row">
+                        <aside class="col-lg-12">
+                        	<img id="photo" class="col-lg-6 col-lg-push-3" src="images/user.png" alt="utilisateur">
+                        	<div class="row">
+                        		<input id="file" type="file" class="col-lg-5 col-lg-offset-3" />
+                        	</div>
+                        		<div class="form-group">
+							    	<label for="select">
+							    		<button class="btn btn-primary" style="padding-left:19px;padding-right:18px;">Niveau</button>
+							    		<select id="select" style="height:36px;">
+									        <option onclick="config(2);">grille 2 x 2</option>
+									        <option onclick="config(3);">grille 3 x 3</option>
+									        <option onclick="config(4);">grille 4 x 4</option>
+									        <option onclick="config(5);">grille 5 x 5</option>
+									        <option onclick="config(6);">grille 6 x 6</option>
+									        <option onclick="config(7);">grille 7 x 7</option>
+									        <option onclick="config(8);">grille 8 x 8</option>
+									        <option onclick="config(9);">grille 9 x 9</option>
+									        <option onclick="config(10);">grille 10 X 10</option>
+							      		</select>
+							    	</label>
+							    	<label for="minute" style="margin:10px;">
+							    		<button class="btn btn-primary">Minuteur</button>
+										<input id="minute" type="text" class="form-control" style="width:116px;display:inline-block;color:magenta">
+							    	</label>
+							    	<label for="score" style="margin:10px;">
+							    		<button class="btn btn-primary" style="padding-left:21px;padding-right:21px;">Score</button>
+										<input id="score" type="text" class="form-control" style="width:116px;display:inline-block;color:magenta">
+							    	</label>
+							    										      	
+							    </div>
+                        </aside>
+
+                    </div>
+                    <div class="col-lg-12">
+                		<div class="progress progress-striped active">
+							<div id="progressBar" class="progress-bar"></div>
+						</div>
+							<div id="pourcentage" class="pull-right"></div>
+							<input type="button" class="btn btn-primary" id="animer" value="Progression du jeu">
+                	</div>
+                </div>
+                <section id="section" class="col-lg-9" >
+
+                	<div id="myalert" class="container" style="display:none">
+						<div class="alert alert-warning alert-dismissable col-lg-4 col-lg-push-3" style="display: none">
+					    	<button type="button" class="close">
+					    		<span style="color:red">X</span>
+					    	</button>
+					    	<h4 id="texteAlerte" style="text-align:left"></h4>
+					  </div>
+					  <div class="col-lg-3 col-lg-push-3" style="border:0">
+					  	<button class="btn btn-warning btn-lg col-lg-push-1" id="afficher">
+					  		<span class="glyphicon glyphicon-bullhorn"></span><br>Cliquez ici pour lire la notification</button>
+					  </div>
+					</div>
+						<script src="assets/js/jquery.js"></script> 
+						<script>  
+						  $(function (){
+						    $("#afficher").click(function() {
+						      $("#afficher").hide();
+						      $(".alert").show("slow");
+						    }); 
+						    $(".close").click(function() {
+						      $(".alert").hide("slow");
+						      $("#afficher").show();
+						    }); 
+						  });
+						</script>
+
+
+                	<div id="mhrotator" style="display:none" class="col-lg-push-1">
+						<style type="text/css"> #mhrotator img { display:none; } </style>
+						<img src="images/Ben (7).JPG" title="Best Group " />
+						<img src="images/BEN.JPG.JPG" title="BEN" />
+						<img src="images/Best Group.JPG" title="Best Group" />
+						<img src="images/Carmine.JPG" title="Carmine" />
+						<img src="images/Cecilius.JPG" title="Cecilius" />
+						<img src="images/ben (4).JPG" title="benjamin" />
+						<img src="images/Colonel.JPG" title="Colonel" />
+						<img src="images/Best Group (2).JPG" title="Best Group" />
+						<img src="images/Daniel.JPG" title="Daniel" />
+						<img src="images/La Patrona (3).JPG" title="La Patrona" />
+						<img src="images/Ben (5).JPG" title="Benjamin" />
+						<img src="images/Daniella.JPG" title="Daniella" />
+						<img src="images/Daviane (2).JPG" title="Daviane" />
+						<img src="images/Ben (3).JPG" title="Benjamin" />
+						<img src="images/Daviane.JPG" title="Daviane" />
+						<img src="images/FA.JPG" title="FA" />
+						<img src="images/Fabrice & Jonathan.JPG" title="Fabrice & Jonathan" />
+						<img src="images/Daviane (3).JPG" title="Daviane" />
+						<img src="images/Fabrice.JPG" title="Fabrice" />
+						<img src="images/Judith (2).JPG" title="Judith" />
+						<img src="images/Ben (6).JPG" title="Benjamin" />
+						<img src="images/Jean Paulin.JPG" title="Jean Paulin" />
+						<img src="images/Joel.JPG" title="Joel" />
+						<img src="images/jonathan.JPG" title="jonathan" />
+						<img src="images/La Patrona (2).JPG" title="La Patrona" />
+						<img src="images/Judith.JPG" title="Judith" />
+						<img src="images/Kalubius.JPG" title="Kalubius" />
+						<img src="images/kasho.JPG" title="kasho" />
+						<img src="images/La Patrona.JPG" title="La Patrona" />
+						<img src="images/Virgo Benjamin.jpg" title="Virgo Benjamin" />
+						<img src="images/Laurier.JPG" title="Laurier" />
+						<img src="images/liza .JPG" title="liza " />
+						<img src="images/Virgo Ben.JPG" title="Virgo Ben" />
+						<img src="images/lys.jpg" title="lys" />
+						<img src="images/Mike.JPG" title="Mike" />
+						<img src="images/Nathan, Leon & Fabrice.JPG" title="Nathan, Leon & Fabrice" />
+						<img src="images/Schiso.JPG" title="Schiso" />
+						<img src="images/La Patrona (4).JPG" title="La Patrona " />
+						<img src="images/Sebastien.JPG" title="Sebastien" />
+						<img src="images/Virgo.JPG" title="Virgo" />
+
+
+
+					</div>
+					<div id="continuer" class="col-lg-11 col-lg-push-1" style="height:160px;display:none;margin:25px" onclick="reprendreJeu();"><br/><h1 style="color:pink">Cliquez <strong>ici</strong> pour continuer <strong>!!!</strong></h1></div>
+					<audio id="music" src="latin.mp3"></audio>
+
+                	<canvas id="canvas" class="col-lg-push-4" style="border:0px"></canvas>
+                </section>
+            </div>
+        </div>
+    </div><!-- container -->
+</body>
+</html>
